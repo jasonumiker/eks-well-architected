@@ -1,4 +1,4 @@
-> NOTE: This is an incomplete work-in-progress
+> NOTE: This is currently an incomplete work-in-progress
 
 # AWS Well Architected with EKS
 
@@ -41,13 +41,16 @@ Also, one of the key considerations for which path to choose is the changes that
 
 ### OPS 5. How do you reduce defects, ease remediation, and improve flow into production?
 
-This set of AWS best practices is around how you handle version control, you do builds and deployments as well as do testing of your application(s). There are some practices that would be consistent with how you managed AWS including:
+This set of AWS best practices is around how you handle version control, you do builds and deployments as well as do testing of your application(s). There are many best practices for EKS that would be consistent with how you managed AWS including:
 * You should manage your infrastructure via code (IaC)
 * You should version control that IaC in git
+* You should check whether known vulnerabilities (CVEs) in your OS or code packages that you could patch before deployment
 * You should have automated pipelines to build as well as deploy your application as well as its associated cloud infrastructure
 * You should test your application and associated IaC by *actually* deploying them 'for real' in a non-production environment and testing the results rather than just with static tests and mocks before going to production
 
-What is different when it comes to Kubernetes and EKS is that it is truly declarative (rather than imperative) - and the tooling that you use and the flow into the cluster often looks quite different than a more traditional AWS approach. The Kubernetes 'GitOps' flow is declarative rather than imperative and it is a pull in rather than push out deployment flow.
+#### Declarative GitOps for Kubernetes
+
+What is different when it comes to Kubernetes/EKS is that it is truly declarative (rather than imperative) - and the tooling that you use and the flow into the cluster often looks quite different than a more traditional AWS approach. The Kubernetes 'GitOps' flow is declarative rather than imperative and it is a pull in rather than push out deployment flow.
 
 The imperative approach is to say "create a container with these characteristics". Even if you do the "right thing" and do that via IaC with CloudFormation or Terraform you can then change it via the AWS Console or API and it has drifted from your template(s). The declarative approach is to say "I want a container to exist with these characteristics". It might seem a subtle difference, but what it means is that Kubernetes has a control loop where if you change the results so they no longer match what you declared you wanted it will put them back rather than allow that drift to exist.
 
@@ -55,10 +58,16 @@ Everything in Kubernetes is a declarative YAML file with such a control loop. An
 * They run on your cluster(s) and **pull** in merged changes from git repos/branches rather than have a stage of your pipeline run a CLI to **push** them
     * They, therefore, move the security challenge from controlling access to the cluster (e.g. to be able to run `kubectl` to make changes) to controlling who can merge to the git repo (because whatever gets merged to particular repos/branches *will* be deployed immediately by the GitOps operator)
         * This often takes the form of requiring changes via Pull Request (PR) with a pre-merge approval peer review
-* You - or things like the Horizontal Pod Autoscaler (HPA) - can end up 'fighting' the GitOps operator should you attempt to change things from what is defined in the git repo
-    * This means that you need to omit certain parameters like a desired pod quantity in git so that it isn't something that it will try to revert to
+* You - or things like the Horizontal Pod Autoscaler (HPA) - can end up 'fighting' the GitOps operator should you attempt to change things from what is explicitly defined in the YAML manifest in the git repo
+    * This means that you need to omit certain parameters like a desired pod quantity in git so that it isn't something that GitOps will try to revert to as the HPA changes it based on your defined scaling rules
     * This also means that, in the event of an failed deployment or outage, you need to either disable the GitOps operator before making any changes directly to the cluster that diverge from what is in git or, better, to lean *into* it by pulling an old commit and re-merging it to get it to action that for you rather than fighting you
         * How to deal with failed deployments 'the right way' here is covered in OPS 6 below.
+
+#### Container Vulnerability Scanning
+
+We'll cover this more under the security pillar, but it is both advisable - as well as quite easy - to scan your container images for known vulnerabilities, or CVEs, in your build pipelines before they get pushed to your registry. This can be done with AWS Inspector as well as a number of 3rd party tools such as [Trivy](), [Docker Scout (built into the Docker CLI)](), [Synk Container]() and [Sysdig Secure]().
+
+The hard bit is that, when the scanner inevitably finds them, to fix all of them by upgrading your base layers/images as well as packages in npm/pip/Maven/Nuget etc. before you deploy the workload.
 
 ### OPS 6. How do you mitigate deployment risks?
 
@@ -71,5 +80,29 @@ This set of best practices is about making automated deployments safe (usually w
     * Canary - where you send a subset of your traffic and/or customers to the new version and gradually move more and more of it across to the new version in an automated and controlled way
         * This allows you to only impact a subset of your users with any problems
 
-For Kubernetes, there are tools such as [Argo Rollouts](https://argo-rollouts.readthedocs.io/en/stable/) for ArgoCD and [Flagger](https://fluxcd.io/flagger/) for Flux that help to manage rollouts and automate things like blue/green or canary deployments declaratively. OPS 6 is saying that, should you embrace Kubernetes GitOps with those tools (ArgoCD or Flux), you should also embrace their associated tools to help mitigate any deployment risks.
+For Kubernetes, there are tools such as [Argo Rollouts](https://argo-rollouts.readthedocs.io/en/stable/) when using ArgoCD and [Flagger](https://fluxcd.io/flagger/) when using Flux that help to manage and automate things like blue/green or canary deployments declaratively. OPS 6 is saying that, should you embrace Kubernetes GitOps with those tools (ArgoCD or Flux) like we talked about for OPS 5, you should also embrace their associated deployment tooling to help mitigate any deployment risks.
 
+#### Handling upgrades of Kubernetes/EKS itself
+Well architected is usually focused on workloads rather than on the cluster(s) that they run on. But Kubernetes and EKS have a new version every quarter and the clusters also require regular upgrades too.
+
+There are two approaches to that:
+1. Do in-place upgrades - AWS has great APIs/tooling to allow you to do upgrade from one version to the next. There are some downsides to this approach though:
+    1. The Kubernetes API will go down briefly during the upgrade process. All the workloads *will* keep running but you'll temporarily lose the ability to make changes or even for the workloads to heal in response to failed probes during the upgrade.
+    1. You need to do every version in order and can't skip any. So if you find yourself 3-4 versions back you might not want to do the in-place upgrade shuffle through all of them.
+1. You can spin up a new EKS cluster at the new version, deploy all your same workloads to it and then cut across to the whole new cluster in a blue/green fashion. There are downsides to this approach as well:
+    1. It requires great and complete automation via Infrastructure-as-Code and ideally Kubernetes GitOps.
+        1. As it can work especially well if you can point the new cluster's ArgoCD or Flux at the same git repo for it's K8s manifests and it will pull down identical workloads and configurations.
+    1. It can work well if all of your workloads are stateless - but if you have workloads utilizing persistent EBS volumes then migrating them across to the workload on the new cluster can be challenging.
+    1. It requires you to be using DNS rather than IPs for service discovery outside th cluster as well as leveraging operators so that the NLBs/ALBs for Ingress and the associated Route 53 DNS records are automatically created and updated so as to ensure traffic will work the same way without disruption.
+    1. Using IAM Roles for Service Accounts (IRSA) used to be challenging with changing clusters as the OIDC provider to make that work was tied to each cluster - but AWS has just released the new EKS Pod Identity which should help there https://aws.amazon.com/blogs/aws/amazon-eks-pod-identity-simplifies-iam-permissions-for-applications-on-amazon-eks-clusters/
+
+Both approaches can work well - and which one you choose will depend a bit on your situation (such as whether your workload are stateful). But, whichever path you choose, EKS upgrades are a regular and critical operation you'll need to plan and prepare for well for in order to achieve "Operational excellence".
+
+## Security
+
+### SEC 1. How do you securely operate your workload? 
+
+#### EKS multi-cluster strategy (vs. AWS multi-account strategy)
+In sub-question SEC01-BP01 AWS suggests that you have a multi-account strategy and separate AWS accounts for things like prod vs. non-prod as well as consider doing it for different levels of data sensitivity etc. You can make many of the same arguments for when you need a separate Kubernetes/EKS cluster. Though, to be fair, if you put a cluster in each of your AWS accounts in-line with a multi-account strategy you often do that anyway.
+
+With EKS you an have multiple **Namespaces** where multiple workloads or environments can share a cluster. I would say that this is a much less 'hard' boundary than an AWS account, though - as, while it helps segment access to what you can change via the Kubernetes API, you can 'escape' out of the container boundaries on hosts that all the workloads share.
