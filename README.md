@@ -1,6 +1,6 @@
 > NOTE: This is currently an incomplete work-in-progress
 
-# AWS Well Architected with EKS
+# Applying the AWS Well Architected Framework to EKS
 
 Kubernetes, even when run as the Amazon Elastic Kubernetes Service (EKS) on AWS, is nearly a full cloud in its own right. That is why people can run it on bare-metal within their own data centres - not just in public clouds like AWS. So, running EKS is rather like running a cloud on a cloud - with *some* integrations between the two.
 
