@@ -110,3 +110,50 @@ Well architected is usually focused on workloads rather than on the cluster(s) t
 There are quite a few considerations here and AWS has documented it all quite well in their [EKS Best Practices Guide](https://aws.github.io/aws-eks-best-practices/) - so I'll refer you to the [relevant section](https://aws.github.io/aws-eks-best-practices/upgrades/) of that for more details.
 
 ## Security
+
+### SEC 1. How do you securely operate your workload?
+This set of best practices is focused on your multi-account strategy in AWS as well as having automated testing/validation in place within the pipelines that deploy your code and IaC. It also speaks to having an appropriate threat model for each of your workloads.
+
+#### Multi-account AWS strategy vs. a multi-cluster EKS strategy
+In AWS splitting workloads between different accounts has two key benefits:
+* The AWS IAM is much harder to accidentally 'mess up' where admins or workloads get access to things that they shouldn't
+    * Because, while you technically *can* achieve some of this with fine-grained/least-privilege AWS IAM within an account, it is a much 'harder' boundary to just use seperate AWS accounts
+        * Seperate AWS accounts is especially suggested between development environments and production environments for this reason - as you often want developers to have more access while experimenting and 'moving fast' in the development environment than in production
+* You get your bills split by AWS account so it is easier to attribute cost to different environments/teams/workloads if they map to AWS accounts
+    * Because, while you technically *can* achieve some of this with a fine-grained tagging strategy, you get it 'for free' if things are in different AWS acccounts
+
+You can make the same two arguments for having seperate EKS clusters:
+* It is much harder to accidentally 'mess up' where admins or workloads get access to things they shouldn't in the Kubernetes API
+    * Because, while you technically *can* achieve some of this with fine-grained/least privilege Kuberentes RBAC and Namespaces within a cluster, it is a much 'harder' boundary to just  use seperate EKS clusters
+* With EKS it also isn't just the API's RBAC/boundaries that matter - the workloads share the same underlying Nodes and Linux Kernel - and so noisy neighbors and container escapes are a concern
+    * And, while it is possible to configure your cluster's and workloads' posture to mostly prevent those (don't allow insecure Pod parameters, ensure every workload has cpu/memory requests and limits defined, or even ensure that certain workloads are only scheduled on their own Nodes), it is a much 'harder' boundary between workloads to just have them on seperate clusters
+* Your cloud bills will be for the Nodes - not the containerised workloads running on them - so seperate clusters will also make it easier to attribute cost to different teams/workloads (especially if you also put them in seperate AWS accounts)
+    * If you do need this cost attribution/visibility within a cluster then there are SaaS offerings from vendors such as [KubeCost](https://www.kubecost.com/) and [Sysdig](https://sysdig.com/solutions/cost-optimization/) that can help
+
+This is all to say that when EKS is involved you now have to consider when things should run on the same cluster vs. when they shouldn't - and in addition to what AWS account they should run in.
+
+AWS goes into more detail in how to think about this in their [Tenant Isolation section](https://aws.github.io/aws-eks-best-practices/security/docs/multitenancy/) of the [EKS Best Practices Guide](https://aws.github.io/aws-eks-best-practices/). It coins the terms 'soft multi-tenancy' for sharing clusters and 'hard multi-tenancy' for when you split things into seperate clusters.
+
+#### Automated testing/validation within your pipelines
+
+The best practices in the WAR for this question re: DevSecOps or "shifting left" are:
+* Establish secure baselines and templates that are tested
+* Use automation to test and validate security controls continuously
+    * "For example, scan items such as machine images and IaC templates for security vulnerabilies, irregularities and drift from an established baseline at each stage"
+* Design CI/CD pipelines that test for security issues at each stage
+* Track changes to your workload to help with compliance auditing, change management and investigations
+
+These would all apply if deploying to EKS too - but with these sometime subtle nuances:
+* Establish secure baselines and templates that are tested
+    * The security baselines for your Kubernetes IaC manifests are mostly defined by the project as the [Pod Security Standards](https://kubernetes.io/docs/concepts/security/pod-security-standards/). These control the parameters you can put in your PodSpec that would allow container escapes.
+        * It can be difficult to meet the `restricted` standard, though, so having templates ready to go for your colleages that meet that standard can help smooth adoption
+    * It can be helpful to nominate or build 'trusted' container base images/layers which are the equivilent of AWS AMIs for containers
+* Use automation to test and validate security controls continuously
+    * When it comes to the IaC, one thing that Kubernetes has that AWS doesn't is a built-in Admission Controller that will prevent non-compliant things from being deployed. So, rather than the pipelines providing our security oustside of the cloud/cluster you add it right to the cluster for it to enforce itself.
+        * If you put appopriate labels on your Namespaces then the [Pod Security Admission](https://kubernetes.io/docs/concepts/security/pod-security-admission/) Controller will enforce whatever your nominated [Pod Security Standard](https://kubernetes.io/docs/concepts/security/pod-security-standards/) is for you on anything being deployed to the cluster.
+        * And for more elaborate controls [Open Policy Agent's Gatekeeper](https://open-policy-agent.github.io/gatekeeper/website/) or [Kyverno](https://kyverno.io/) can help with enforcing more general standards on what is and isn't acceptable
+* Design CI/CD pipelines that test for security issues at each stage
+    * Putting container image vulnerability scans in your CI pipelines - in between when the contianer image is built and when it is pushed - is important to keep known vulnerabilities out of your environment
+    * The main difference here vs. deploying to a native AWS service is that deployment (or CD) is often handled by the GitOps operator - and so controlling it is more about putting mandatory tests on PRs to the IaC before they are merged rather than being part of a pipeline
+* Track changes to your workload to help with compliance auditing, change management and investigations
+    * If you follow the Kubernetes GitOps processes/flow then every change has to pass through git as a seperate commit - and so you will have a full audit trail there
