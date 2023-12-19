@@ -155,3 +155,27 @@ These would all apply if deploying to EKS too - but with these sometime subtle n
     * The main difference here vs. deploying to a more native AWS service is that deployment (or CD) is often handled by the GitOps operator (ArgoCD or Flux) - and so controlling it is more about putting mandatory tests on any Pull Requests before they are merged to the branch that represents that environment
 * Track changes to your workload to help with compliance auditing, change management and investigations
     * If you follow the Kubernetes GitOps processes/flow then every change has to pass through git as a separate commit - and so you are guaranteed to have a **full** audit trail
+
+### SEC 2. How do you manage authentication for people and machines?
+
+#### Authentication to the EKS/Kubernetes Control plane
+
+One of the ways that AWS has made EKS an AWS service is by integrating it with AWS IAM. By default any access to the EKS API is done via AWS IAM - but it is possible to optionally switch that to an [OpenID Connect (OIDC) identity provider](https://docs.aws.amazon.com/eks/latest/userguide/authenticate-oidc-identity-provider.html).
+
+The challenge comes with authorization which we'll discuss in SEC 3 below.
+
+You just need to run the AWS CLI command `aws eks update-kubeconfig` to set it up to leverage your IAM User/Role that you are using with the CLI for `kubectl` as well.
+
+#### Authentication to AWS's APIs from workloads/Pods running on EKS
+
+The equivalent to 'assigning a role' to a workload or Pods running on EKS is a bit more complicated/indirect than doing it to an EC2 Instance, ECS Task or Lambda Function. With EKS traditionally you have needed to use [IAM Roles for Service Accounts (IRSA)](https://docs.aws.amazon.com/eks/latest/userguide/iam-roles-for-service-accounts.html). This is covered by the documentation above but involves:
+* Creating an OIDC Provider for the EKS Cluster
+* Setting up an IAM Role that trusts that OIDC provider and the specific service account name within it for Role Assumption with the required IAM permissions you need for that app
+    * This should, of course, be least-privilege so scoped both by API actions as well as by the resource ID they are acting on etc.
+* Adding an annotation to the service account letting EKS know it should get temporary credentials from the Simple Token Service (STS) and mount them in any workloads that use that service account.
+
+**NEW:** AWS just launched a new alternative method to do this that looks both simpler and less tied to specific EKS clusters called [EKS Pod Identity](https://aws.amazon.com/blogs/aws/amazon-eks-pod-identity-simplifies-iam-permissions-for-applications-on-amazon-eks-clusters/). I'll document it further here soon after I have a chance to test it out.
+
+### SEC 2. How do you manage permissions (authorization) for people and machines?
+
+
