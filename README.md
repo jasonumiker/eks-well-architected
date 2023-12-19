@@ -8,7 +8,7 @@ Running your workloads on top of EKS, thus, has major implications for the AWS W
 
 AWS hasn't (yet?) addressed these implications themselves (outside of the [EKS Best Practices Guide](https://aws.github.io/aws-eks-best-practices/)) - so this is my attempt to do so. 
 
-> NOTE: This is my (Jason Umiker's) subjective view of this space. It doesn't come from AWS - though I do hope that they extend Well Architected with an EKS lens themselves someday soon. And I am open to any suggestions via Issues/Pull Requests against this repository.
+> NOTE: This is my (Jason Umiker's) subjective view of this space. It doesn't come from AWS - though I do hope that they extend Well Architected with an EKS lens themselves someday soon. And I am open to any suggestions via Issues/Pull Requests against this repository you may have.
 
 ## The Pillars
 
@@ -28,51 +28,48 @@ And then within each pillar there are variety of best practices that AWS suggest
 
 This set of best practices are focused around implementing observability in your workload so that you can understand its state and make data-driven decisions based on business requirements.
 
-One area where EKS differs from most of the other AWS services is that there is no observability (metrics, logs or traces) enabled by default. The reason for that is that customers have a key decision to make - one that is strategic.
+One area where EKS differs from most of the other AWS services is that there is no observability (metrics, logs or traces) enabled by default. The reason for that is that customers have a key decision to make - one that can be strategic.
 
 The three possible paths to observability with EKS are:
 1. Use the traditional AWS native approaches (e.g. CloudWatch, CloudWatch Logs, X-Ray) - This approach is appropriate if all of your workloads are in AWS and so it makes sense to standardize on their native, yet AWS-proprietary, observability services. For metrics and logs AWS calls this approach CloudWatch Container Insights (https://docs.aws.amazon.com/AmazonCloudWatch/latest/monitoring/deploy-container-insights-EKS.html).
 1. You can use the open-source vendor-agnostic tooling in this space (e.g. Prometheus, Elastic/OpenSearch, Jaeger) - This approach is approach is appropriate if you are trying to use consistent tooling both in and out of AWS. And Prometheus and Jaeger are not just open-source, but also governed by the same vendor-neutral organization that governs Kubernetes - the [Cloud Native Computing Foundation (CNCF)](https://www.cncf.io). And, [thanks in large part to AWS](https://aws.amazon.com/blogs/opensource/stepping-up-for-a-truly-open-source-elasticsearch/), ElasticSearch has been forked to be truly open and free in [OpenSearch](https://opensearch.org).
-    1. AWS actually runs managed services for Prometheus as well as OpenSearch - giving you the best of both worlds (a managed service but based on a vendor-agnostic opensource tool and standard that you *could* run yourself anywhere)
+    1. AWS actually runs managed services for Prometheus as well as OpenSearch - giving you the best of both worlds (a managed service but based on a vendor-agnostic opensource tool that you *could* run yourself anywhere)
         1. And at re:Invent this year they announced a tighter opt-in integration with their Managed Service for Prometheus with EKS - https://aws.amazon.com/about-aws/whats-new/2023/11/amazon-managed-service-prometheus-agentless-collector-metrics-eks/
-1. You can use non-AWS commercial SaaS services in this observability space (Sysdig Monitor, Datadog, AppDynamics, NewRelic, Elastic, Splunk, SumoLogic etc.) - This approach can work for both hybrid and multi-cloud environments but at a cost of both money and a degree of lock-in.
+1. You can use non-AWS commercial SaaS services in this observability space (Sysdig Monitor, Datadog, AppDynamics, NewRelic, Elastic, Splunk, SumoLogic etc.) - This approach can work for both hybrid and multi-cloud environments - but at a cost of both money and a degree of lock-in to the SaaS vendor.
 
-Also, one of the key considerations for which path to choose is the degree of changes that you'll need to make to your agent(s) and your code. For metrics and traces, you often need to instrument your code with an SDK like CloudWatch and X-Ray or Prometheus and Jaegar. So changing tools means changes to your code (even though they are usually fairly minor/trivial). Many of the commercial SaaS offerings also have proprietary agents - so changing tools means changing agents too. This cost-to-change is being mitigated with the new OpenTelemetry agent/project - https://opentelemetry.io/ though. OpenTelemetry is a CNCF project focused on being one agent and SDK that can serve all your metrics, logging and tracing needs while being plugable to all the common backend tools/services.
+Also, one of the key considerations for which path to choose is the extent to which you'll need to change your code. As, for metrics and traces, you often need to instrument your code with an SDK like CloudWatch and X-Ray or Prometheus and Jaegar. So, changing tools usually means changes to your code (even though they are usually fairly minor/boilerplate). Many of the commercial SaaS offerings also have proprietary agents - so changing tools means changing out all the agents too. This cost-to-change is now often being mitigated, though, with [OpenTelemetry](https://opentelemetry.io/). OpenTelemetry is a CNCF project focused on being one agent and SDK that can serve all your metrics, logging and tracing needs while being plugable to all the common backend tools/services. And AWS supports this approach with their own [AWS Distro for OpenTelemetry](https://aws.amazon.com/otel/).
 
-Finally, this observability data is often needed by automation such as the Kubernetes Horizontal Pod Autoscaler (HPA) (to know when to scale your workload in/out) or by tools like Argo Rollouts or Flagger (to know when a deployment has issues and should be automatically rolled back). So, understanding what tools you plan on using and what observability backends they will need to integrate with is a consideration here as well.
+Finally, this observability data is often needed by automation such as the Kubernetes Horizontal Pod Autoscaler (HPA) (to know when to scale your workload in/out) or by tools like Argo Rollouts or Flagger (to know when a deployment has issues and should be automatically rolled back). So, understanding what tools you plan on using and what observability backends those tools will need as a source is a consideration here as well.
 
 ### OPS 5. How do you reduce defects, ease remediation, and improve flow into production?
 
-This set of best practices are focused on adopting approaches that improve flow of changes into production, that activate refactoring, fast feedback on quality, and bug fixing. These accelerate beneficial changes entering production, limit issues deployed, and achieve rapid identification and remediation of issues introduced through deployment activities.
+This set of best practices are focused on adopting approaches that improve the flow of changes into production, that activate refactoring, fast feedback on quality, and bug fixing. These accelerate beneficial changes entering production, limit issues deployed, and achieve rapid identification and remediation of issues introduced through deployment activities.
 
-What both AWS-native and Kubernetes/EKS has in common here are that you should:
+What both Kubernetes/EKS and an AWS-native approach have in common here are that you should:
 * Manage your infrastructure via code (IaC)
-* Version control both your code as well as the associated IaC in a source repository like git
+* Version control both your code, as well as the associated IaC, in a source repository like git
 * Check whether known vulnerabilities (CVEs) in your code, the opensource packages you use from npm/pip/maven/nuget etc. or the OS base layers of your container images
-* Have automated pipelines to build as well as deploy your application ideally along with any cloud infrastructure on which it depends
-* Test that your application and associated IaC work by *actually* deploying them 'for real' in a non-production but production-like integration environment (rather than just with static tests and mocks) before going to production
+* Have automated pipelines to build as well as deploy your application - ideally along with any cloud infrastructure on which it depends too
+* Test that your application and associated IaC work by *actually* deploying them 'for real' in a non-production but production-like environment (rather than just with static tests and mocks) before going to production
 
 But there are some differences in both tooling and mindset when it comes to having a "best practice" Kubernetes deployment flow vs. native AWS.
 
 #### Declarative GitOps for Kubernetes
 
-Firstly, Kubernetes/EKS is different in that it is truly declarative rather than imperative like AWS. The imperative approach is to say "create a container with these characteristics right now". If you do that with CloudFormation or Terraform then you can then change that resource via the AWS Console or API - in which case it has drifted from your IaC. The declarative approach is to say "I want a container to exist with these characteristics". It might seem a subtle difference, but Kubernetes has a control loop where if you change the results so they no longer match what you declared you wanted it will put them back rather than allow any drift to exist.
+Firstly, Kubernetes/EKS is different in that it is truly declarative rather than imperative like AWS. The imperative approach is to say "create a Pod/Task with these characteristics right now". If you do that with CloudFormation or Terraform then you can then change that resource via the AWS Console or API - in which case it has drifted from your point-in-time IaC deployment. The declarative approach is to say "I want a Pod/Task to exist with these characteristics until I say otherwise". It might seem a subtle difference, but Kubernetes has a control loop where if you change things so they no longer match what you had declared then it will immediately put them back - continually reverting any drift that happens.
 
-Also, in Kubernetes everything is a declarative YAML IaC file. Even if you make what seems like an imperative command with `kubectl` it is just generating the IaC file and submitting it for you. The analogy with native AWS would be to imagine if you could only managed AWS with CloudFormation - where even the AWS Console and CLI just generated and submitted CloudFormation on your behalf - and AWS continually reverted any resource to match the CloudFormation template you declared if you tried to change it directly.
+Also, in Kubernetes **everything** is a declarative YAML IaC file. Even if you make what seems like an imperative command with `kubectl`, it is just generating the YAML IaC file and submitting it for you. The analogy here with native AWS would be to imagine if you could only manage AWS with CloudFormation - and anything you did with the AWS Console or CLI generated the CloudFormation templates and applied them for you. And that if you tried to introduce any drift vs. what was in the deployed templates (the CF Stacks) then AWS would immediately revert back to what you declared in your IaC. That is the Kubernetes declarative flow.
 
-This difference allows for some significant changes in flow and tooling. This 'best pratice' flow in Kubernetes is called **GitOps**.
+This fundamental difference allows for some significant changes in both tooling as well as what are the best practices for the platform. The 'best pratice' flow in Kubernetes with this all in mind is called **GitOps**.
 
 ![](https://codefresh.io/wp-content/uploads/2023/06/Basic-GitOps-workflow-for-Kubernetes.png)
 
 The two common Kubernetes GitOps tools are [ArgoCD](https://argo-cd.readthedocs.io/en/stable/) and [Flux](https://fluxcd.io/). What they have in common is:
-* They run on your cluster(s) and **pull** in merged changes from git repos/branches (rather than have a stage of your pipeline run a CLI command to **push** them)
+* They run within your cluster(s) and **pull** in newly merged changes from git repos/branches (rather than have a stage of your pipeline run a CLI command to **push** them to the cluster/cloud)
     * They, therefore, move the security challenge from controlling access to the cluster (e.g. authx of `kubectl` to make the required changes) to controlling who can merge to the git repo - because whatever gets merged to particular repos/branches *will* be deployed immediately by the GitOps operator
-        * This often takes the form of requiring changes via Pull Request (PR) with a pre-merge testing and approval flow
-* You - or things like the Horizontal Pod Autoscaler (HPA) - can end up 'fighting' the GitOps operator should you attempt to change things from what is explicitly defined in the YAML manifest in the git repo (as it'll keep trying to change it back to what is in git)
-    * This means that you need to omit certain parameters like a desired pod quantity in git so that it isn't something that GitOps will try to revert to as the HPA changes it based on your defined scaling rules
-    * This also means that, in the event of an failed deployment or outage, you need to either disable the GitOps operator before making any changes directly to the cluster or, better, to lean *into* it by making any changes via new git
-        * This means that to do a rollback you pull and then re-merge the old commit so it is the latest for the branch so that the GitOps operator deploys it
-            * More on how to deal with failed deployments 'the right way' here is covered in OPS 6 below.
+        * This often takes the form of requiring changes via Pull Request (PR) with a mandatory pre-merge testing and approval flow
+
+One of the key challenges when it comes to running EKS is that you often need to mix these tools and approaches - use CloudFormation or Terraform to create the VPC, create the EKS cluster, create the RDS Databases, etc. and then you use the K8s YAML with ArgoCD or Flux to manage the containerized applications on Kubernetes. Some people don't want to use two different approaches - and that is why AWS developed the [AWS Controllers for Kubernetes](https://aws-controllers-k8s.github.io/community/) so that you can mange AWS from within EKS via declarative YAML like you do with your apps. There is also the CNCF project [Crossplane](https://www.crossplane.io) that takes a similar approach of extending Kubernetes to manage the cloud - but it can do it not just for AWS but for Azure and GCP as well!
 
 #### Container Vulnerability Scanning
 
@@ -82,7 +79,7 @@ We'll cover this in more detail under the security pillar, but it is both advisa
 
 This set of best practices is focused on adopting approaches that provide fast feedback on quality and achieve rapid recovery from changes that do not have desired outcomes. Using these practices mitigates the impact of issues introduced through the deployment of changes.
 
-Things that both Kubernetes and AWS have in common here are that:
+Things that both an EKS/Kubernetes and AWS-native approach have in common here are that:
 * You should plan for unsuccessful deployments
 * Deployments should be automated
 * There should be automated testing to determine if deployments are successful
@@ -94,7 +91,7 @@ Things that both Kubernetes and AWS have in common here are that:
 
 #### Argo Rollouts and Flux Flagger
 
-For Kubernetes, there are two tools dedicated to helping you achieve these goals that align with which of the GitOps operators that you choose - [Argo Rollouts](https://argo-rollouts.readthedocs.io/en/stable/) when using ArgoCD and [Flagger](https://fluxcd.io/flagger/) when using Flux. OPS 6 is saying that, should you embrace Kubernetes GitOps with those tools (ArgoCD or Flux) like we talked about for OPS 5, you should also embrace their associated deployment tooling to help mitigate any deployment risks.
+For Kubernetes, there are two tools dedicated to helping you achieve these goals that align with which of the GitOps operators that you choose - [Argo Rollouts](https://argo-rollouts.readthedocs.io/en/stable/) when using ArgoCD and [Flagger](https://fluxcd.io/flagger/) when using Flux. OPS 6 is saying that, should you embrace Kubernetes GitOps with those tools (ArgoCD or Flux) like we talked about for OPS 5, you should also embrace their associated advanced deployment tooling to help fully automate the process and mitigate deployment risks.
 
 These tools will do things like:
 * Facilitate automated **blue/green** (run both the old and new version and flip the traffic seamlessly back/forth) or **canary** deployments (gradually shift the traffic to thew new version)
@@ -117,26 +114,26 @@ This set of best practices is focused on your multi-account strategy in AWS as w
 #### Multi-account AWS strategy vs. a multi-cluster EKS strategy
 In AWS splitting workloads between different accounts has two key benefits:
 * The AWS IAM is much harder to accidentally 'mess up' where admins or workloads get access to things that they shouldn't
-    * Because, while you technically *can* achieve some of this with fine-grained/least-privilege AWS IAM within an account, it is a much 'harder' boundary to just use seperate AWS accounts
-        * Seperate AWS accounts is especially suggested between development environments and production environments for this reason - as you often want developers to have more access while experimenting and 'moving fast' in the development environment than in production
+    * Because, while you technically *can* achieve some of this with fine-grained/least-privilege AWS IAM within an account, it is a much 'harder' boundary to just use separate AWS accounts
+        * Separate AWS accounts is especially suggested between development and production environments for this reason - as you often want developers to have more access to make change and see the databases etc. while experimenting and 'moving fast' in the development environment than in production
 * You get your bills split by AWS account so it is easier to attribute cost to different environments/teams/workloads if they map to AWS accounts
     * Because, while you technically *can* achieve some of this with a fine-grained tagging strategy, you get it 'for free' if things are in different AWS acccounts
 
-You can make the same two arguments for having seperate EKS clusters:
+Since Kubernetes is nearly a private cloud running on your public cloud, you can make the same two arguments for having separate EKS clusters:
 * It is much harder to accidentally 'mess up' where admins or workloads get access to things they shouldn't in the Kubernetes API
-    * Because, while you technically *can* achieve some of this with fine-grained/least privilege Kuberentes RBAC and Namespaces within a cluster, it is a much 'harder' boundary to just  use seperate EKS clusters
-* With EKS it also isn't just the API's RBAC/boundaries that matter - the workloads share the same underlying Nodes and Linux Kernel - and so noisy neighbors and container escapes are a concern
-    * And, while it is possible to configure your cluster's and workloads' posture to mostly prevent those (don't allow insecure Pod parameters, ensure every workload has cpu/memory requests and limits defined, or even ensure that certain workloads are only scheduled on their own Nodes), it is a much 'harder' boundary between workloads to just have them on seperate clusters
+    * Because, while you technically *can* achieve some of this with fine-grained/least privilege Kubernetes RBAC and Namespaces within a cluster, it is a much 'harder' boundary to just  use separate EKS clusters
+* With EKS it also isn't just the API's RBAC/boundaries that matter - the workloads share the same underlying Nodes and Linux Kernel(s) - and so noisy neighbors and container escapes are a concern
+    * And, while it is possible to configure your cluster's and workloads' posture to mostly prevent those (don't allow insecure Pod parameters, ensure every workload has cpu/memory requests and limits defined, or even ensure that certain workloads are only scheduled on their own private Nodes), it is a much 'harder' boundary between workloads to just have them on separate clusters - which by definition also puts them on separate Nodes
 * Your cloud bills will be for the Nodes - not the containerised workloads running on them - so seperate clusters will also make it easier to attribute cost to different teams/workloads (especially if you also put them in seperate AWS accounts)
     * If you do need this cost attribution/visibility within a cluster then there are SaaS offerings from vendors such as [KubeCost](https://www.kubecost.com/) and [Sysdig](https://sysdig.com/solutions/cost-optimization/) that can help
 
-This is all to say that when EKS is involved you now have to consider when things should run on the same cluster vs. when they shouldn't - and in addition to what AWS account they should run in.
+This is all to say that when EKS is involved you now have to consider when things should run on the same cluster vs. when they shouldn't - and in addition to what AWS account they should run in. And since one EKS cluster can't run in multiple AWS accounts - the AWS account splitting decision also impacts the EKS one as well.
 
 AWS goes into more detail in how to think about this in their [Tenant Isolation section](https://aws.github.io/aws-eks-best-practices/security/docs/multitenancy/) of the [EKS Best Practices Guide](https://aws.github.io/aws-eks-best-practices/). It coins the terms 'soft multi-tenancy' for sharing clusters and 'hard multi-tenancy' for when you split things into seperate clusters.
 
 #### Automated testing/validation within your pipelines
 
-The best practices in the WAR for this question re: DevSecOps or "shifting left" are:
+The best practices in the framework for this question re: DevSecOps or "shifting left" are:
 * Establish secure baselines and templates that are tested
 * Use automation to test and validate security controls continuously
     * "For example, scan items such as machine images and IaC templates for security vulnerabilies, irregularities and drift from an established baseline at each stage"
@@ -145,15 +142,16 @@ The best practices in the WAR for this question re: DevSecOps or "shifting left"
 
 These would all apply if deploying to EKS too - but with these sometime subtle nuances:
 * Establish secure baselines and templates that are tested
-    * The security baselines for your Kubernetes IaC manifests are mostly defined by the project as the [Pod Security Standards](https://kubernetes.io/docs/concepts/security/pod-security-standards/). These control the parameters you can put in your PodSpec that would allow container escapes.
-        * It can be difficult to meet the `restricted` standard, though, so having templates ready to go for your colleages that meet that standard can help smooth adoption
-    * It can be helpful to nominate or build 'trusted' container base images/layers which are the equivilent of AWS AMIs for containers
+    * Some sensible security baselines for your Kubernetes IaC manifests are defined by the Kubernetes project as the [Pod Security Standards](https://kubernetes.io/docs/concepts/security/pod-security-standards/). These control the parameters you can put in your PodSpec that would allow for things like container escapes.
+        * It can be difficult to meet the top `restricted` standard, though, so having templates ready to go for your colleagues that meet that standard can help smooth adoption
+    * It can be helpful to nominate or build 'trusted' container base images/layers, which are the equivalent of Amazon Machine Images (AMIs), for your containers
 * Use automation to test and validate security controls continuously
-    * When it comes to the IaC, one thing that Kubernetes has that AWS doesn't is a built-in Admission Controller that will prevent non-compliant things from being deployed. So, rather than the pipelines providing our security oustside of the cloud/cluster you add it right to the cluster for it to enforce itself.
-        * If you put appopriate labels on your Namespaces then the [Pod Security Admission](https://kubernetes.io/docs/concepts/security/pod-security-admission/) Controller will enforce whatever your nominated [Pod Security Standard](https://kubernetes.io/docs/concepts/security/pod-security-standards/) is for you on anything being deployed to the cluster.
+    * When it comes to the IaC, one thing that Kubernetes has that AWS doesn't is a built-in [Admission Controller](https://kubernetes.io/docs/reference/access-authn-authz/admission-controllers/) that will look at the IaC being deployed and refuse to deploy any whose parameters don't meet your requirements. So, rather than the needing to configure pipelines to provide our security *outside* of the cloud/cluster, you can actually ask the Kubernetes to enforce it at runtime for you *inside* the API.
+        * If you put appropriate labels on your Namespaces then the built-in [Pod Security Admission](https://kubernetes.io/docs/concepts/security/pod-security-admission/) Controller will enforce whatever your nominated [Pod Security Standard](https://kubernetes.io/docs/concepts/security/pod-security-standards/) is for you on anything being deployed to the cluster.
         * And for more elaborate controls [Open Policy Agent's Gatekeeper](https://open-policy-agent.github.io/gatekeeper/website/) or [Kyverno](https://kyverno.io/) can help with enforcing more general standards on what is and isn't acceptable
 * Design CI/CD pipelines that test for security issues at each stage
-    * Putting container image vulnerability scans in your CI pipelines - in between when the contianer image is built and when it is pushed - is important to keep known vulnerabilities out of your environment
-    * The main difference here vs. deploying to a native AWS service is that deployment (or CD) is often handled by the GitOps operator - and so controlling it is more about putting mandatory tests on PRs to the IaC before they are merged rather than being part of a pipeline
+    * Putting container image vulnerability scans in your CI pipelines - in between when the container image is built and when it is pushed - is important to keep known vulnerabilities out of your environment as well as to give instant feedback that teams can iterate against
+        * And AWS just added the ability to do this in your pipelines outside of ECR at re:Invent this year - https://aws.amazon.com/blogs/aws/three-new-capabilities-for-amazon-inspector-broaden-the-realm-of-vulnerability-scanning-for-workloads/
+    * The main difference here vs. deploying to a more native AWS service is that deployment (or CD) is often handled by the GitOps operator (ArgoCD or Flux) - and so controlling it is more about putting mandatory tests on any Pull Requests before they are merged to the branch that represents that environment
 * Track changes to your workload to help with compliance auditing, change management and investigations
-    * If you follow the Kubernetes GitOps processes/flow then every change has to pass through git as a seperate commit - and so you will have a full audit trail there
+    * If you follow the Kubernetes GitOps processes/flow then every change has to pass through git as a separate commit - and so you are guaranteed to have a **full** audit trail
