@@ -254,7 +254,7 @@ The things that differ when it comes to EKS are that:
 
 This set of best practices is focused on ensuring there are multiple layers of defense to help protect from both external and internal network-based threats.
 
-Many of the principles here are the same as with AWS (that you should have granular least-privilege network controlls and micro-segmentation) - but with Kubernetes/EKS some of the tooling and flows can be a bit different.
+Many of the principles here are the same as with AWS (that you should have granular least-privilege network controls and micro-segmentation) - but with Kubernetes/EKS some of the tooling and flows can be a bit different.
 
 #### Controlling network access to your workload(s)
 
@@ -263,10 +263,11 @@ The thing that differs between 'native' AWS and EKS is there are two different o
     * This is not enabled by default and so you need to enable it by specifying the `ENABLE_POD_ENI=true` option to the AWS VPC CNI. 
         * This is covered more extensively in the [EKS Best Practices Guide](https://aws.github.io/aws-eks-best-practices/networking/sgpp/).
     * There is a list of considerations/provisos [in the documentation](https://docs.aws.amazon.com/eks/latest/userguide/security-groups-for-pods.html#sg-pods-considerations) that you should be familiar with
-* You can use the Kubernetes native firewall capability - NetworkPolices:
+* You can use the Kubernetes native firewall capability - [NetworkPolices](https://kubernetes.io/docs/concepts/services-networking/network-policies/):
     * You can think of NetworkPolicy as a distributed host firewall - the AWS VPC CNI on each host/Node continually reconfigures that Nodes's firewall with the right rules as Pods come and go (and it learns their IPs) based on what the NetworkPolicies have declared should or shouldn't be allowed
     * This is not enabled by default with EKS either and so you need to enable it by specifying `ENABLE_NETWORK_POLICY=true` in the AWS CNI configuration.
         * This is covered more extensively in the [EKS Best Practices Guide](https://aws.github.io/aws-eks-best-practices/security/docs/network/#network-policy)
+    * There is a great graphical NetworkPolicy editor at https://editor.networkpolicy.io and some great examples at https://github.com/ahmetb/kubernetes-network-policy-recipes
 * You can even use both at the same time
     * In which case, traffic is only allowed if allowed through them both
     * Customers often use NetworkPolicies for firewall rules *within* the cluster (between things running on it) and Security Group for Pods to control access to other resources in AWS running *outside* the cluster
@@ -298,7 +299,7 @@ This set of best practices is focused on establishing multiple layers of defense
 
 #### Administrative Access to the Nodes
 
-If you can SSH, or start an equivalent interactive session in SSM Session Manager, onto a Node then you can have quite extensive access to the workload/environment - especially if you can also sudo to root. Note that if you are root and run a `ps` you see all the processes regardless of what Pod they are running on - and you can kill them as well. You can also access any Volumes that they are using (they are all usually mounted onto the Node's filesystem then from there into the Pod). You can also run `ctictl` which is the CLI for containerd (the container runtime used by EKS) and bypass Kubernetes and manage the containers running on that Node directly.
+If you can SSH, or start an equivalent interactive session in SSM Session Manager, onto a Node then you can have quite extensive access to the workload/environment - especially if you can also sudo to root. Note that if you are root and run a `ps` you see all the processes regardless of what Pod they are running on - and you can kill them as well. You can also access any Volumes that they are using (they are all usually mounted onto the Node's filesystem then from there into the Pod). You can also run `crictl` which is the CLI for containerd (the container runtime used by EKS) and bypass Kubernetes and manage the containers running on that Node directly.
 
 As such, this access should be tightly controlled. SSM Session Manager has advantages over SSH in that it:
 * Has centralized access control using IAM
@@ -374,7 +375,7 @@ Kubernetes has long has the ability to manage load balancers, including to orche
 Ingress has had a few challenges though:
 * The manifest standard didn't have parameters that covered things like certificate management or LB-specific options - so you ended up with much of that being specified via annotations that varied from Ingress to Ingress - breaking the "write once run on any Ingress Controller" original goal
     * That also meant that people were more likely to use things like the nginx Ingress controller even in AWS EKS because they wanted to be sure that the Ingress documents / IaC would work exactly the same if they were run outside of AWS
-* It had some challenges around RBAC and Namespacing (e.g. people in different Namespaces wanting to share a single LB with Ingress documents they control in their own Namespace)
+* It had some challenges around RBAC and namespacing (e.g. people in different Namespaces wanting to share a single LB with Ingress documents they control in their own Namespace)
 
 Rather that 'fix' Ingress Kubernetes has just launched a replacement that addresses all the issues - [the Gateway API](https://kubernetes.io/docs/concepts/services-networking/gateway/). Today the AWS Load Balancer Controller doesn't yet support the Gateway API - but Ingress isn't going away for some time and I am sure it will before that is deprecated. Once it does support Gateway API then it might encourage you to use the native LBs in AWS knowing that the same IaC will run outside of AWS on something like nginx if you need it to later.
 
